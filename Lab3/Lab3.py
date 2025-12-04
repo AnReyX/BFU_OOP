@@ -51,8 +51,7 @@ class ReLogFilter(ILogFilter):
 
 class LevelFilter(ILogFilter):
     """
-    Пропускает лог, если его уровень выше или равен заданному.
-    Например, если min_level = WARN, то пройдут WARN и ERROR, но не INFO.
+    Пропускает лог, если его уровень равен заданному
     """
 
     def __init__(self, level: LogLevel):
@@ -269,4 +268,5 @@ if __name__ == "__main__":
         with open("app_logs.txt", "r", encoding="utf-8") as f:
             print(f.read())
     except FileNotFoundError:
+
         print("Файл логов еще не создан.")
