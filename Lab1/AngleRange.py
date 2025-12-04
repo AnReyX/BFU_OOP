@@ -5,25 +5,8 @@ from Angle import Angle
 
 
 class AngleRange:
-    """
-    - Реализовать механизм создания объекта через задание начальной и конечной точки промежутка в виде углов float,
-     int или Angle
-    - Предусмотреть возможность использования включающих и исключающих промежутков
-    - реализовать возможность сравнения объектов на эквивалентность (eq)
-    - реализовать строковое представление объекта (str, repr)
-    - реализовать получение длины промежутка (abs или отдельны метод)
-    - реализовать сравнение промежутков
-    - реализовать операцию in для проверки входит один промежуток в другой или угол в промежуток
-    - реализовать операции сложения, вычитания (результат в общем виде - список промежутков)
-    """
-
-    start: Angle
-    end: Angle
-    inc_start: bool
-    inc_end: bool
-
     def __init__(self, start: Union[Angle, int, float], end: Union[Angle, int, float],
-                 inc_start: bool = True, inc_end: bool = True) -> None:
+                 inc_start: bool = True, inc_end: bool = True):
         self.start = start if isinstance(start, Angle) else Angle(start)
         self.end = end if isinstance(end, Angle) else Angle(end)
         self.inc_start = inc_start
@@ -54,7 +37,8 @@ class AngleRange:
 
     def __ne__(self, other: 'AngleRange') -> bool:
         return not self == other
-
+    
+    """
     def __lt__(self, other: 'AngleRange') -> bool:
         if self.end == other.end and not self.inc_end and other.inc_end:
             return True
@@ -70,6 +54,7 @@ class AngleRange:
 
     def __ge__(self, other: 'AngleRange') -> bool:
         return (self > other) or (self == other)
+    """
 
     # - - - Проверка принадлежности угла - - -
     def contains_angle(self, a: Angle) -> bool:
@@ -77,31 +62,25 @@ class AngleRange:
         s = self.start.radians
         e = self.end.radians
 
-        if s < e:
-            if self.inc_start and x == s:
-                return True
-            if self.inc_end and x == e:
-                return True
-            return s < x < e
-
-        if x > s or x < e:
-            return True
         if self.inc_start and x == s:
             return True
         if self.inc_end and x == e:
             return True
-        return False
+        return s < x < e
+    
+    
+    # - - - Содержит другой диапазон - - -
+    def contains_range(self, other: "AngleRange") -> bool:
+        return self.start <= other.start and self.end >= other.end
 
-    def __contains__(self, item: Union[Angle, int, float]) -> bool:
+    def __contains__(self, item: Union['AngleRange', Angle, int, float]) -> bool:
         if isinstance(item, Angle):
             return self.contains_angle(item)
         if isinstance(item, (int, float)):
             return self.contains_angle(Angle(item))
-        return False
-
-    # - - - Содержит другой диапазон - - -
-    def contains_range(self, other: "AngleRange") -> bool:
-        return self.contains_angle(other.start) and self.contains_angle(other.end)
+        if isinstance(item, AngleRange):
+            return self.contains_range(item)
+        return NotImplemented
 
     # - - - Сложение диапазонов - - -
     def __add__(self, other: "AngleRange") -> List["AngleRange"]:

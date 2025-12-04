@@ -2,57 +2,47 @@ from abc import ABC, abstractmethod
 import re
 import socket
 import datetime
-from enum import IntEnum
+from enum import Enum
 from typing import List
 
 
-# ==========================================
-# 1. Перечислитель LogLevel
-# Используем IntEnum, чтобы можно было сравнивать уровни (ERROR > INFO)
-# ==========================================
-class LogLevel(IntEnum):
+#Перечислитель LogLevel
+class LogLevel(Enum):
     INFO = 1
     WARN = 2
     ERROR = 3
 
 
-# ==========================================
-# 2. Абстракция (Интерфейс) Фильтра
-# ==========================================
+# Интерфейс фильтра
 class ILogFilter(ABC):
     @abstractmethod
     def match(self, log_level: LogLevel, text: str) -> bool:
-        """Возвращает True, если лог должен пройти, иначе False"""
         pass
 
 
-# ==========================================
-# 3. Реализация Фильтров
-# ==========================================
-class SimpleLogFilter(ILogFilter):
-    """Пропускает лог, если в тексте содержится заданная подстрока"""
+# Фильтры
+class SimpleLogFilter(ILogFilter): # Пропуск, если содержит ключевое слово
 
     def __init__(self, keyword: str):
-        self.keyword = keyword
+        self.keyword = keyword.lower()
 
     def match(self, log_level: LogLevel, text: str) -> bool:
-        return self.keyword in text
+        return self.keyword in text.lower()
 
 
-class ReLogFilter(ILogFilter):
-    """Пропускает лог, если текст соответствует регулярному выражению"""
+class ReLogFilter(ILogFilter): # Пропуск, если текст соответствует регулярному выражению
 
     def __init__(self, pattern: str):
-        self.pattern = re.compile(pattern)
+        try:
+            self.pattern = re.compile(pattern)
+        except Exception as e:
+            print(f"RegEx Error: {e}")
 
     def match(self, log_level: LogLevel, text: str) -> bool:
         return self.pattern.search(text) is not None
 
 
-class LevelFilter(ILogFilter):
-    """
-    Пропускает лог, если его уровень равен заданному
-    """
+class LevelFilter(ILogFilter): # Пропуск, если его уровень равен заданному
 
     def __init__(self, level: LogLevel):
         self.level = level
@@ -61,36 +51,35 @@ class LevelFilter(ILogFilter):
         return log_level == self.level
 
 
-# ==========================================
-# 4. Абстракция (Интерфейс) Обработчика (Handler)
-# ==========================================
+# Интерфейс обработчика (Handler)
 class ILogHandler(ABC):
     @abstractmethod
     def handle(self, log_level: LogLevel, text: str) -> None:
         pass
 
 
-# ==========================================
-# 5. Реализация Обработчиков
-# ==========================================
-class ConsoleHandler(ILogHandler):
+# Обработчики
+class ConsoleHandler(ILogHandler): # Вывод в стандартный поток вывода (консоль)
+
     def handle(self, log_level: LogLevel, text: str) -> None:
-        # Вывод в стандартный поток вывода (консоль)
         print(f"[CONSOLE] {text}")
 
 
-class FileHandler(ILogHandler):
+class FileHandler(ILogHandler): # Вывод в текстовый файл
+
     def __init__(self, filename: str):
         self.filename = filename
 
     def handle(self, log_level: LogLevel, text: str) -> None:
-        # 'a' - append mode (добавление в конец файла)
-        with open(self.filename, "a", encoding="utf-8") as f:
-            f.write(f"{text}\n")
+        try:
+            # 'a' - append mode (добавление в конец файла)
+            with open(self.filename, "a", encoding="utf-8") as f:
+                f.write(f"{text}\n")
+        except Exception as e:
+            print(f"File Handler Error: {e}")
 
 
-class SocketHandler(ILogHandler):
-    """Имитация отправки в сокет (чтобы код не падал без реального сервера)"""
+class SocketHandler(ILogHandler): # Отправка в сокет
 
     def __init__(self, host: str, port: int):
         self.host = host
@@ -110,15 +99,13 @@ class SocketHandler(ILogHandler):
             print(f"Socket Error: {e}")
 
 
-class SyslogHandler(ILogHandler):
-    """Имитация записи в системный лог"""
+class SyslogHandler(ILogHandler): # Запись в системный лог
 
     def handle(self, log_level: LogLevel, text: str) -> None:
         print(f"[SYSLOG] {text}")
 
 
-class FtpHandler(ILogHandler):
-    """Имитация отправки на FTP"""
+class FtpHandler(ILogHandler): # Отправка на FTP
 
     def __init__(self, ftp_host: str):
         self.ftp_host = ftp_host
@@ -142,62 +129,48 @@ class FtpHandler(ILogHandler):
             print(f"FTP Error: {e}")
 
 
-# ==========================================
-# 6. Абстракция (Интерфейс) Форматтера
-# ==========================================
+# Интерфейс форматтера
 class ILogFormatter(ABC):
     @abstractmethod
     def format(self, log_level: LogLevel, text: str) -> str:
         pass
 
 
-# ==========================================
-# 7. Реализация Форматтера
-# ==========================================
+# Форматтер
 class StandardFormatter(ILogFormatter):
     """
     Форматирует сообщение к виду:
     [<log_level>] [<data:yyyy.MM.dd hh:mm:ss>] <text>
     """
 
-    def format(self, log_level: LogLevel, text: str) -> str:
-        # Получаем имя уровня (например, "INFO")
-        level_name = log_level.name
-        # Текущее время
-        now = datetime.datetime.now().strftime("%Y.%m.%d %H:%M:%S")
+    def format(self, log_level: LogLevel, text: str, date_format: str = "%Y.%m.%d %H:%M:%S") -> str:
+        try:
+            level_name = log_level.name
+            now = datetime.datetime.now().strftime(date_format)
 
-        return f"[{level_name}] [{now}] {text}"
+            return f"[{level_name}] [{now}] {text}"
+        except Exception as e:
+            print(f"Formatting Error: {e}")
 
 
-# ==========================================
-# 8. Класс Logger (Композиция)
-# ==========================================
+# Класс Logger, композиция
 class Logger:
-    def __init__(
-            self,
-            filters: List[ILogFilter] = None,
-            formatters: List[ILogFormatter] = None,
-            handlers: List[ILogHandler] = None
-    ):
+    def __init__(self, filters: List[ILogFilter] = None, formatters: List[ILogFormatter] = None, handlers: List[ILogHandler] = None):
         # Если списки не переданы, инициализируем пустыми
         self.filters = filters if filters else []
         self.formatters = formatters if formatters else []
         self.handlers = handlers if handlers else []
 
     def log(self, log_level: LogLevel, text: str) -> None:
-        # 1. Проверка фильтров
-        # Если хотя бы один фильтр вернет False, лог не проходит
         for log_filter in self.filters:
-            if not log_filter.match(log_level, text):
-                return  # Прерываем обработку, лог отфильтрован
+            if not log_filter.match(log_level, text): # Если хотя бы один фильтр вернет False, лог не проходит
+                return
 
-        # 2. Применение форматтеров (последовательно)
         formatted_text = text
-        for formatter in self.formatters:
+        for formatter in self.formatters: # Форматирование
             formatted_text = formatter.format(log_level, formatted_text)
 
-        # 3. Отправка обработчикам
-        for handler in self.handlers:
+        for handler in self.handlers: # Отправка обработчикам
             handler.handle(log_level, formatted_text)
 
     def log_info(self, text: str) -> None:
@@ -210,63 +183,39 @@ class Logger:
         self.log(LogLevel.ERROR, text)
 
 
-# ==========================================
-# 9. Демонстрация работы
-# ==========================================
+
 if __name__ == "__main__":
-    print("=== Настройка системы логирования ===\n")
 
-    # Создаем компоненты
+    # Фильтры
+    level_filter_E = LevelFilter(LogLevel.ERROR) # Фильтры: Пропускать только если уровень == ERROR
+    level_filter_I = LevelFilter(LogLevel.INFO) # Пропускать только если уровень == INFO
 
-    # Фильтры:
-    # 1. Пропускать только если уровень >= WARN
-    level_filter = LevelFilter(LogLevel.WARN)
-    # 2. Пропускать только если в тексте нет слова "secret" (для примера инвертируем логику внутри фильтра сложно,
-    # поэтому используем позитивные фильтры из задания.
-    # Допустим, мы хотим логировать только сообщения, содержащие слово "System" (SimpleFilter)
-    # или сообщения, начинающиеся с кода ошибки Error-XXX (RegexFilter).
-    # Для простоты демонстрации добавим только LevelFilter, иначе слишком много логов отсеется.
-
-    # Форматтеры:
-    std_formatter = StandardFormatter()
+    std_formatter = StandardFormatter() # Форматтер
 
     # Обработчики:
     console_handler = ConsoleHandler()
     file_handler = FileHandler("app_logs.txt")
-    # Чтобы не засорять вывод ошибками сети, используем mock-реализации внутри классов
     socket_handler = SocketHandler("127.0.0.1", 8080)
 
-    # --- Сценарий 1: Строгий логгер (только ошибки в файл и консоль) ---
-    print("--- Logger 1: Strict (Errors Only) ---")
-    strict_logger = Logger(
-        filters=[LevelFilter(LogLevel.ERROR)],
-        formatters=[std_formatter],
-        handlers=[console_handler, file_handler]
-    )
+    print("- - - Logger 1: Strict (Errors Only) - - -")
+    strict_logger = Logger(filters=[LevelFilter(LogLevel.ERROR)], formatters=[std_formatter], handlers=[console_handler, file_handler])
 
     strict_logger.log_info("Это сообщение INFO не должно появиться.")
     strict_logger.log_warn("Это сообщение WARN тоже не появится.")
     strict_logger.log_error("Критическая ошибка базы данных!")  # Это должно появиться
 
-    print("\n--- Logger 2: General (Info+, Regex filter) ---")
-    # --- Сценарий 2: Логгер для определенных сообщений ---
-    # Пропускаем всё, что INFO и выше, НО текст должен содержать цифры (Regex)
+    print("\n- - - Logger 2: General (Info+, Regex filter) - - -")
     regex_filter = ReLogFilter(r"\d+")  # Паттерн: наличие хотя бы одной цифры
 
-    general_logger = Logger(
-        filters=[LevelFilter(LogLevel.INFO), regex_filter],
-        formatters=[std_formatter],
-        handlers=[console_handler, socket_handler]
-    )
+    general_logger = Logger(filters=[LevelFilter(LogLevel.INFO), regex_filter], formatters=[std_formatter], handlers=[console_handler, socket_handler])
 
     general_logger.log_info("Запуск системы...")  # Нет цифр -> отфильтруется
     general_logger.log_info("Запуск сервиса 1")  # Есть цифра -> пройдет
     general_logger.log_warn("Память заполнена на 90%")  # Есть цифры -> пройдет
 
-    print("\n--- Проверка файла app_logs.txt ---")
+    print("\n- - - Проверка файла app_logs.txt - - -")
     try:
         with open("app_logs.txt", "r", encoding="utf-8") as f:
             print(f.read())
     except FileNotFoundError:
-
         print("Файл логов еще не создан.")

@@ -4,7 +4,7 @@ from typing import Tuple, List
 from ANSI import AnsiColor, AnsiCommand
 
 class Printer:
-    def __init__(self, color: AnsiColor, position: Tuple[int, int], symbol: str, font_path: str) -> None:
+    def __init__(self, color: AnsiColor, position: Tuple[int, int], symbol: str, font_path: str):
         self.color = color
         self.position = position  # (x, y)
         self.symbol = symbol
@@ -12,7 +12,7 @@ class Printer:
         self.font_data = self._load_font(font_path)
         self._current_offset_y = 0  # Чтобы следующий print внутри with не накладывался
 
-    # - - - Вспомогательные абстрактные методы - - -
+    # - - - Вспомогательные статические методы - - -
 
     @staticmethod
     def _load_font(path: str) -> dict:
