@@ -2,8 +2,12 @@ from Angle import Angle
 from AngleRange import AngleRange
 from math import pi
 
+ran1 = AngleRange(pi / 3, 7 * pi)
+ran2 = AngleRange(pi / 6, 8 * pi)
+print(ran1 in ran2)
+
 a = Angle(pi)
-b = Angle.from_degrees(20)
+b = Angle.from_degrees(90)
 c = Angle.from_degrees(365)
 
 print(f"Угол a: {a.degrees} градусов")
@@ -12,10 +16,11 @@ print("Угол c:", c)
 
 c.degrees = 10
 print("Новый угол c:", c)
-print(f"Целочисленный b: {int(b)} радиан")
+print(f"Целочисленный b: {int(b)} градусов")
 
 print("a > b? ", a > b)
 print("b == c? ", b == c)
+print("c == c? ", c == c)
 print("a + b =", a + b)
 print("c - a =", c - a)
 print("c * 10 =", c * 10)

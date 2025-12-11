@@ -1,8 +1,5 @@
 from typing import List, Union
-from math import pi
-
 from Angle import Angle
-
 
 class AngleRange:
     def __init__(self, start: Union[Angle, int, float], end: Union[Angle, int, float],
@@ -24,11 +21,7 @@ class AngleRange:
 
     # - - - Длина диапазона - - -
     def __abs__(self) -> float:
-        s = self.start.radians
-        e = self.end.radians
-        if e >= s:
-            return e - s
-        return 2 * pi + e - s
+        return self.start.radians - self.end.radians
 
     # - - - Сравнения - - -
     def __eq__(self, other: 'AngleRange') -> bool:
@@ -38,7 +31,7 @@ class AngleRange:
     def __ne__(self, other: 'AngleRange') -> bool:
         return not self == other
     
-    """
+
     def __lt__(self, other: 'AngleRange') -> bool:
         if self.end == other.end and not self.inc_end and other.inc_end:
             return True
@@ -54,7 +47,7 @@ class AngleRange:
 
     def __ge__(self, other: 'AngleRange') -> bool:
         return (self > other) or (self == other)
-    """
+
 
     # - - - Проверка принадлежности угла - - -
     def contains_angle(self, a: Angle) -> bool:
@@ -71,7 +64,11 @@ class AngleRange:
     
     # - - - Содержит другой диапазон - - -
     def contains_range(self, other: "AngleRange") -> bool:
-        return self.start <= other.start and self.end >= other.end
+        return ((self.start.radians <= other.start.radians if
+                 (self.inc_start or not self.inc_start and not other.inc_start)
+                 else self.start.radians < other.start.radians) and
+                (self.end.radians >= other.end.radians if (self.inc_end or not self.inc_end and not other.inc_end)
+                 else self.end.radians > other.end.radians))
 
     def __contains__(self, item: Union['AngleRange', Angle, int, float]) -> bool:
         if isinstance(item, Angle):
@@ -114,6 +111,7 @@ class AngleRange:
             return [AngleRange(self.start, other.end, self.inc_start, other.inc_end)]
         if other.end > self.start and other.start < self.end:
             return [AngleRange(other.start, self.end, other.inc_start, self.inc_end)]
+        return [self]
 
     # - - - Вычитание диапазонов - - -
     def __sub__(self, other: "AngleRange") -> List["AngleRange"]:
