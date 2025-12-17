@@ -1,0 +1,26 @@
+[
+    {
+        "id": 1,
+        "name": "Андрей Голубин",
+        "login": "andrew",
+        "password": "123",
+        "email": "andrew@mail.ru",
+        "address": "г. Москва, ул. Пушкина, д. 10"
+    },
+    {
+        "id": 2,
+        "name": "Владислав Целиковский",
+        "login": "vlad",
+        "password": "321",
+        "email": null,
+        "address": null
+    },
+    {
+        "id": 3,
+        "name": "Виктор Антонников",
+        "login": "victor",
+        "password": "qwerty",
+        "email": null,
+        "address": null
+    }
+]
