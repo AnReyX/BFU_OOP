@@ -1,0 +1,362 @@
+import abc
+import json
+import os
+from typing import Dict, List, Type, Any, Optional
+
+# ==========================================
+# 1. СИСТЕМА ВВОДА-ВЫВОДА (IO & RECEIVERS)
+# ==========================================
+
+class OutputHandler:
+    """Управляет выводом в консоль и файл."""
+    def __init__(self, filename="log.txt"):
+        self.filename = filename
+        # Очистим файл при запуске
+        with open(self.filename, 'w', encoding='utf-8') as f:
+            f.write("--- SESSION START ---\n")
+
+    def log(self, message: str):
+        # Вывод в консоль
+        print(f"CONSOLE: {message}")
+        # Вывод в файл (форматированный)
+        with open(self.filename, 'a', encoding='utf-8') as f:
+            f.write(f"{message}\n")
+
+# Receiver 1: Экран (для печати символов)
+class VirtualScreen:
+    def __init__(self, io_handler: OutputHandler):
+        self.text = ""
+        self.io = io_handler
+
+    def add_char(self, char: str):
+        self.text += char
+        self.io.log(self.text)
+
+    def remove_last(self):
+        if self.text:
+            self.text = self.text[:-1]
+        self.io.log(self.text)
+        
+    def get_text(self):
+        return self.text
+
+# Receiver 2: Аудио/Медиа система
+class SystemSimulator:
+    def __init__(self, io_handler: OutputHandler):
+        self.io = io_handler
+
+    def show_message(self, msg: str):
+        self.io.log(f"SYSTEM: {msg}")
+
+# ==========================================
+# 2. ПАТТЕРН COMMAND
+# ==========================================
+
+class Command(abc.ABC):
+    """Базовый абстрактный класс команды."""
+    @abc.abstractmethod
+    def execute(self):
+        pass
+
+    @abc.abstractmethod
+    def undo(self):
+        pass
+    
+    @abc.abstractmethod
+    def get_name(self) -> str:
+        """Нужно для сериализации (чтобы знать, какой класс восстанавливать)"""
+        pass
+
+class PrintCharCommand(Command):
+    def __init__(self, screen: VirtualScreen, char: str):
+        self.screen = screen
+        self.char = char
+
+    def execute(self):
+        self.screen.add_char(self.char)
+
+    def undo(self):
+        self.screen.remove_last()
+        
+    def get_name(self):
+        return "PrintCharCommand"
+
+class VolumeUpCommand(Command):
+    def __init__(self, sys_sim: SystemSimulator):
+        self.sys_sim = sys_sim
+
+    def execute(self):
+        self.sys_sim.show_message("volume increased +10%")
+
+    def undo(self):
+        self.sys_sim.show_message("volume decreased -10% (UNDO)")
+
+    def get_name(self):
+        return "VolumeUpCommand"
+
+class VolumeDownCommand(Command):
+    def __init__(self, sys_sim: SystemSimulator):
+        self.sys_sim = sys_sim
+
+    def execute(self):
+        self.sys_sim.show_message("volume decreased -10%")
+
+    def undo(self):
+        self.sys_sim.show_message("volume increased +10% (UNDO)")
+        
+    def get_name(self):
+        return "VolumeDownCommand"
+
+class MediaPlayerCommand(Command):
+    def __init__(self, sys_sim: SystemSimulator):
+        self.sys_sim = sys_sim
+
+    def execute(self):
+        self.sys_sim.show_message("Media Player Launched")
+
+    def undo(self):
+        self.sys_sim.show_message("Media Player Closed (UNDO)")
+
+    def get_name(self):
+        return "MediaPlayerCommand"
+
+# ==========================================
+# 3. СЕРИАЛИЗАЦИЯ (CUSTOM SERIALIZATION SCHEME)
+# ==========================================
+
+class ObjectMapper:
+    """
+    Отвечает за преобразование объекта в словарь и обратно.
+    Поддерживает настройки (переименование полей, игнорирование).
+    """
+    def __init__(self):
+        self.rename_map = {} # {internal_name: exported_name}
+        self.ignore_list = []
+
+    def configure(self, rename_map: Dict[str, str] = None, ignore_list: List[str] = None):
+        if rename_map: self.rename_map = rename_map
+        if ignore_list: self.ignore_list = ignore_list
+
+    def to_dict(self, obj: Any) -> Dict[str, Any]:
+        """Превращает объект (или dict) в словарь с учетом правил."""
+        data = {}
+        source = obj.__dict__ if hasattr(obj, '__dict__') else obj
+        
+        if not isinstance(source, dict):
+            return source # Примитив
+
+        for key, value in source.items():
+            if key in self.ignore_list:
+                continue
+            
+            # Применяем переименование
+            export_key = self.rename_map.get(key, key)
+            data[export_key] = value
+            
+        return data
+
+class JsonSerializer:
+    """
+    Механизм сериализации, не зависящий от логики классов.
+    Использует ObjectMapper.
+    """
+    def __init__(self, mapper: ObjectMapper):
+        self.mapper = mapper
+
+    def serialize_to_file(self, data: Any, filepath: str):
+        # Преобразуем данные через маппер
+        mapped_data = self.mapper.to_dict(data)
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(mapped_data, f, indent=4)
+            print(f"DEBUG: Saved to {filepath}")
+        except IOError as e:
+            print(f"Error saving file: {e}")
+
+    def deserialize_from_file(self, filepath: str) -> Dict:
+        if not os.path.exists(filepath):
+            return {}
+        try:
+            with open(filepath, 'r') as f:
+                raw_data = json.load(f)
+            # Обратное переименование полей (упрощенно)
+            reverse_map = {v: k for k, v in self.mapper.rename_map.items()}
+            restored_data = {}
+            for k, v in raw_data.items():
+                internal_key = reverse_map.get(k, k)
+                restored_data[internal_key] = v
+            return restored_data
+        except Exception as e:
+            print(f"Error loading file: {e}")
+            return {}
+
+# ==========================================
+# 4. MODIFIED MEMENTO & STATE SAVER
+# ==========================================
+
+class KeyboardMemento:
+    """
+    DTO (Data Transfer Object) для хранения состояния.
+    Хранит только ассоциации клавиш.
+    """
+    def __init__(self, key_map: Dict[str, str]):
+        self.associations = key_map 
+
+class KeyboardStateSaver:
+    """
+    Отвечает за сохранение/восстановление.
+    Работает с Memento и Serializer.
+    """
+    def __init__(self, filepath: str):
+        self.filepath = filepath
+        # Настройка маппера согласно заданию (тонкая настройка)
+        self.mapper = ObjectMapper()
+        # Пример: в файле поле будет называться "shortcuts", а в коде "associations"
+        self.mapper.configure(rename_map={"associations": "shortcuts"})
+        self.serializer = JsonSerializer(self.mapper)
+
+    def save(self, memento: KeyboardMemento):
+        self.serializer.serialize_to_file(memento, self.filepath)
+
+    def load(self) -> Optional[KeyboardMemento]:
+        data = self.serializer.deserialize_from_file(self.filepath)
+        if not data:
+            return None
+        # Восстанавливаем Memento из словаря
+        return KeyboardMemento(data.get("associations", {}))
+
+# ==========================================
+# 5. КЛАВИАТУРА (INVOKER)
+# ==========================================
+
+class Keyboard:
+    def __init__(self, screen: VirtualScreen, system: SystemSimulator):
+        self.screen = screen
+        self.system = system
+        
+        # Стек истории для Undo
+        self.history: List[Command] = []
+        # Стек для Redo
+        self.redo_stack: List[Command] = []
+        
+        # Карта привязок: "key_combo" -> "CommandClassName"
+        self.key_map: Dict[str, str] = {}
+        
+        # Реестр фабрик команд (чтобы создавать их по имени строки)
+        # В реальном приложении можно использовать DI контейнер
+        self._command_registry = {
+            "VolumeUpCommand": lambda: VolumeUpCommand(self.system),
+            "VolumeDownCommand": lambda: VolumeDownCommand(self.system),
+            "MediaPlayerCommand": lambda: MediaPlayerCommand(self.system)
+        }
+
+    def register_key(self, key: str, command_name: str):
+        """Добавление/изменение ассоциации"""
+        if command_name in self._command_registry:
+            self.key_map[key] = command_name
+            print(f"DEBUG: Associated '{key}' with {command_name}")
+        else:
+            print(f"Error: Unknown command {command_name}")
+
+    def press_key(self, key: str):
+        """Нажатие клавиши."""
+        command = None
+
+        # 1. Проверяем спец. команды (undo/redo)
+        if key == "undo":
+            self.undo()
+            return
+        if key == "redo":
+            self.redo()
+            return
+
+        # 2. Проверяем, есть ли маппинг для этой клавиши
+        if key in self.key_map:
+            cmd_name = self.key_map[key]
+            factory = self._command_registry.get(cmd_name)
+            if factory:
+                command = factory()
+        
+        # 3. Если маппинга нет, и это обычный символ - печатаем
+        elif len(key) == 1: 
+             command = PrintCharCommand(self.screen, key)
+
+        # Выполнение команды
+        if command:
+            command.execute()
+            self.history.append(command)
+            self.redo_stack.clear() # Очистка redo при новом действии
+
+    def undo(self):
+        if not self.history:
+            return
+        cmd = self.history.pop()
+        cmd.undo()
+        self.redo_stack.append(cmd)
+
+    def redo(self):
+        if not self.redo_stack:
+            return
+        cmd = self.redo_stack.pop()
+        cmd.execute()
+        self.history.append(cmd)
+
+    # --- Memento Methods ---
+    def create_memento(self) -> KeyboardMemento:
+        return KeyboardMemento(self.key_map.copy())
+
+    def restore_from_memento(self, memento: KeyboardMemento):
+        if memento:
+            self.key_map = memento.associations
+            print("DEBUG: Keyboard configuration restored.")
+
+# ==========================================
+# 6. DEMO (CLIENT CODE)
+# ==========================================
+
+if __name__ == "__main__":
+    # 1. Инициализация инфраструктуры
+    io = OutputHandler("output_log.txt")
+    screen = VirtualScreen(io)
+    system = SystemSimulator(io)
+    
+    # 2. Инициализация клавиатуры
+    keyboard = Keyboard(screen, system)
+    
+    # 3. Инициализация сохранения (Memento + Serialization)
+    saver = KeyboardStateSaver("keyboard_config.json")
+    
+    # 4. Попытка восстановить состояние
+    restored_memento = saver.load()
+    if restored_memento:
+        keyboard.restore_from_memento(restored_memento)
+    else:
+        # Настройка по умолчанию, если файла нет
+        keyboard.register_key("ctrl++", "VolumeUpCommand")
+        keyboard.register_key("ctrl+-", "VolumeDownCommand")
+        keyboard.register_key("ctrl+p", "MediaPlayerCommand")
+
+    # 5. Симуляция ввода пользователя
+    print("\n--- SIMULATION START ---\n")
+    
+    inputs = [
+        "a", "b", "c", 
+        "undo", "undo", 
+        "redo", 
+        "ctrl++", 
+        "ctrl+-", 
+        "ctrl+p", 
+        "d", 
+        "undo", 
+        "undo"
+    ]
+
+    for key in inputs:
+        # Имитируем небольшую паузу для реалистичности логов, если нужно
+        # time.sleep(0.1) 
+        keyboard.press_key(key)
+
+    # 6. Сохранение состояния перед выходом
+    print("\n--- SAVING STATE ---")
+    saver.save(keyboard.create_memento())
+    print("Program finished. Check console output above and 'output_log.txt'.Config in 'keyboard_config.json'")
