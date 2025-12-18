@@ -33,7 +33,7 @@ def main():
 
     if not auth_service.is_authorized:
         print("\n- - - Вход в систему - - -")
-        auth_service.sign_in("anna", "321")
+        auth_service.sign_in("vlad", "321")
         if auth_service.is_authorized():
             print(f"Успешный вход: {auth_service.current_user()}")
         else:
@@ -56,4 +56,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
