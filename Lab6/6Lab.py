@@ -5,7 +5,7 @@ import json
 
 class Command(ABC):
     @abstractmethod
-    def execute(self) -> None:
+    def execute(self, command_key) -> None:
         pass
 
     @abstractmethod
@@ -59,10 +59,7 @@ class Keyboard:
 
         command = self.commands[command_key]
 
-        if isinstance(command, KeyCommand):
-            self.output.add_letter(command_key)
-
-        command.execute()
+        command.execute(command_key)
         self.output.add_command_to_stack(command_key)
 
     def undo(self) -> None:
@@ -72,9 +69,6 @@ class Keyboard:
 
         command_key = self.output.get_index_return_command()
         command = self.commands[command_key]
-
-        if isinstance(command, KeyCommand):
-            self.output.remove_last_letter()
 
         command.cancel()
 
@@ -89,10 +83,7 @@ class Keyboard:
         command_key = self.output.get_index_return_command()
         command = self.commands[command_key]
 
-        if isinstance(command, KeyCommand):
-            self.output.add_letter(command_key)
-
-        command.execute()
+        command.execute(command_key)
 
     def save(self) -> None:
         self.saving.save_to_json()
@@ -105,18 +96,17 @@ class KeyCommand(Command):
     def __init__(self, keyboard: Keyboard) -> None:
         self.keyboard = keyboard
 
-    def execute(self) -> None:
+    def execute(self, command_key) -> None:
+        self.keyboard.output.add_letter(command_key)
         print(self.keyboard.output.text)
 
     def cancel(self) -> None:
+        self.keyboard.output.remove_last_letter()
         print(self.keyboard.output.text)
-
-    def is_printed(self) -> bool:
-        return True
 
 
 class VolumeUpCommand(Command):
-    def execute(self) -> None:
+    def execute(self, command_key) -> None:
         print("volume increased 20%")
 
     def cancel(self) -> None:
@@ -124,7 +114,7 @@ class VolumeUpCommand(Command):
 
 
 class VolumeDownCommand(Command):
-    def execute(self) -> None:
+    def execute(self, command_key) -> None:
         print("volume decreased 20%")
 
     def cancel(self) -> None:
@@ -132,7 +122,7 @@ class VolumeDownCommand(Command):
 
 
 class MediaPlayerCommand(Command):
-    def execute(self) -> None:
+    def execute(self, command_key) -> None:
         print("Media Player started")
 
     def cancel(self) -> None:
@@ -167,10 +157,9 @@ class SaveKeyboardToFile:
         try:
             with open(self.file_dir, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-        except FileNotFoundError:
-            return print(f"File {self.file_dir} not found")
-        except json.JSONDecodeError:
-            return print(f"File {self.file_dir} is empty or corrupted")
+        except Exception as e:
+            print(f"Error loading file: {e}")
+            return
 
         self.keyboard.output.text = data.get("text", "")
         self.keyboard.output.commands_stack = data.get("commands_stack", [])
@@ -179,18 +168,15 @@ class SaveKeyboardToFile:
         commands_info = data.get("commands", {})
         restored_commands = {}
 
-        available_classes = globals()
-
         for key, class_name in commands_info.items():
-            if class_name in available_classes:
-                command_class = available_classes[class_name]
-
+            try:
+                command_class = getattr(__import__(__name__), class_name)
                 if class_name == "KeyCommand":
                     restored_commands[key] = command_class(self.keyboard)
                 else:
                     restored_commands[key] = command_class()
-            else:
-                print(f"Class {class_name} not found")
+            except AttributeError:
+                print(f"Error: Class {class_name} not found")
 
         self.keyboard.commands = restored_commands
         print(f"Keyboard loaded from {self.file_dir}")
