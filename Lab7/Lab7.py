@@ -90,117 +90,182 @@ class Scope:
     def __exit__(self, exc_type: Any, exc_value: Any, exc_traceback: Any) -> None:
         self.injector.scopes.pop()
 
+from abc import ABC, abstractmethod
+import random
 
-class interface1:
-  pass
-class interface2:
-  pass
-class interface3:
-  pass
+# --- Импортируем твой код (или вставь класс Injector сюда) ---
+# from my_injector import Injector, LifeStyle 
+# (Для удобства я предполагаю, что класс Injector и LifeStyle уже здесь или импортированы)
 
+# ==========================================
+# 2. ОПРЕДЕЛЕНИЕ ИНТЕРФЕЙСОВ И КЛАССОВ
+# ==========================================
 
-class class1_debug(interface1):
+# Интерфейс 1: Логгер
+class ILogger(ABC):
+    @abstractmethod
+    def log(self, message: str): pass
+
+# Реализация 1.1 (Debug)
+class ConsoleLogger(ILogger):
     def __init__(self):
-        print("Created class1_debug")
-        self.name = "class1_debug"
+        self.id = random.randint(1, 1000)
+        print(f"[ConsoleLogger Created] ID: {self.id}")
 
+    def log(self, message: str):
+        print(f"LOG (ID {self.id}): {message}")
 
-class class1_release(interface1):
-    def __init__(self):
-        print("Created class1_release")
-        self.name = "class1_release"
+# Реализация 1.2 (Release)
+class FileLogger(ILogger):
+    def __init__(self, path: str = "default.log"):
+        self.path = path
+        self.id = random.randint(1, 1000)
+        print(f"[FileLogger Created] ID: {self.id}, Path: {self.path}")
 
+    def log(self, message: str):
+        print(f"WRITING TO FILE {self.path} (ID {self.id}): {message}")
 
-class class2_debug(interface2):
-    def __init__(self, i1: interface1):
-        print("Created class2_debug")
-        self.i1 = i1
-        self.name = "class2_debug"
+# ---
 
+# Интерфейс 2: База данных
+class IDatabase(ABC):
+    @abstractmethod
+    def connect(self): pass
 
-class class2_release(interface2):
-    def __init__(self, i1: interface1):
-        print("Created class2_release")
-        self.i1 = i1
-        self.name = "class2_release"
+# Реализация 2.1 (Debug) - InMemory
+class InMemoryDatabase(IDatabase):
+    def connect(self):
+        return "Connected to Memory"
 
+# Реализация 2.2 (Release) - Postgres
+class PostgresDatabase(IDatabase):
+    def connect(self):
+        return "Connected to Postgres"
 
-class class3_debug(interface3):
-    def __init__(self, i1: interface1, i2: interface2):
-        print("Created class3_debug")
-        self.i1 = i1
-        self.i2 = i2
-        self.name = "class3_debug"
+# ---
 
+# Интерфейс 3: Сервис уведомлений (Фабричный метод будет тут)
+class INotification(ABC):
+    @abstractmethod
+    def send(self, msg): pass
 
-class class3_release(interface3):
-    def __init__(self, i1: interface1, i2: interface2):
-        print("Created class3_release")
-        self.i1 = i1
-        self.i2 = i2
-        self.name = "class3_release"
+class EmailNotification(INotification):
+    def send(self, msg): print(f"Email sent: {msg}")
 
+# Фабричный метод
+def notification_factory(prefix: str = ""):
+    print(f"Factory called with prefix: {prefix}")
+    inst = EmailNotification()
+    # Можем как-то настроить объект
+    return inst
 
-print("Configuration 1: debug")
-injector = Injector()
-injector.register(interface1, class1_debug, LifeStyle.PerRequest)
-injector.register(interface2, class2_debug, LifeStyle.PerRequest)
-injector.register(interface3, class3_debug, LifeStyle.PerRequest)
+# ---
 
-print("\nCreating objects:")
-obj1 = injector.get_instance(interface1)
-obj2 = injector.get_instance(interface2)
-obj3 = injector.get_instance(interface3)
+# Сложный класс, использующий зависимости (Внедрение зависимостей)
+class UserService:
+    # Инжектор посмотрит на аннотации типов ILogger и IDatabase
+    def __init__(self, logger: ILogger, db: IDatabase):
+        self.logger = logger
+        self.db = db
+    
+    def register_user(self, name: str):
+        self.logger.log(f"Registering user {name}")
+        conn = self.db.connect()
+        self.logger.log(f"DB Status: {conn}")
 
-print(f"\nOutput:")
-print(f"obj1.name: {obj1.name}")
-print(f"obj2.name: {obj2.name}, obj2.i1.name: {obj2.i1.name}")
-print(f"obj3.name: {obj3.name}, obj3.i1.name: {obj3.i1.name}, obj3.i2.name: {obj3.i2.name}")
+# ==========================================
+# 3. КОНФИГУРАЦИИ (DEBUG / RELEASE)
+# ==========================================
 
-print("\nConfiguration 2: different Lifestyles")
-injector = Injector()
-injector.register(interface1, class1_release, LifeStyle.Singleton)
-injector.register(interface2, class2_release, LifeStyle.Scoped)
-injector.register(interface3, class3_release, LifeStyle.PerRequest)
+def configure_debug(container: Injector):
+    print("\n--- Applying DEBUG Config ---")
+    # Сначала регистрируем зависимости (листья), потом зависимые сервисы!
+    
+    # Singleton: Логгер один на всё приложение
+    container.register(ILogger, ConsoleLogger, LifeStyle.Singleton)
+    
+    # Scoped: База данных (одна на запрос/область)
+    container.register(IDatabase, InMemoryDatabase, LifeStyle.Scoped)
+    
+    # PerRequest: Сервис создается каждый раз новый
+    container.register(UserService, UserService, LifeStyle.PerRequest)
 
-print("\nSingleton test:")
-s1 = injector.get_instance(interface1)
-s2 = injector.get_instance(interface1)
-print(f"s1 is s2: {s1 is s2}")
+def configure_release(container: Injector):
+    print("\n--- Applying RELEASE Config ---")
+    
+    # Передаем параметры в конструктор (путь к файлу)
+    container.register(ILogger, FileLogger, LifeStyle.Singleton, parameters={"path": "/var/log/app.log"})
+    
+    container.register(IDatabase, PostgresDatabase, LifeStyle.Singleton)
+    
+    # Фабричный метод
+    container.register(INotification, notification_factory, parameters={"prefix": "ALERT"})
+    
+    container.register(UserService, UserService, LifeStyle.PerRequest)
 
-print("\nScoped test:")
-with injector.open_scope():
-    sc1 = injector.get_instance(interface2)
-    sc2 = injector.get_instance(interface2)
-    print(f"Inside scope: sc1 is sc2: {sc1 is sc2}")
+# ==========================================
+# 4. ДЕМОНСТРАЦИЯ И ТЕСТЫ
+# ==========================================
 
-with injector.open_scope():
-    sc3 = injector.get_instance(interface2)
-    print(f"New scope: sc1 is sc3: {sc1 is sc3}")
+def run_tests():
+    injector = Injector()
+    
+    # --- СЦЕНАРИЙ 1: DEBUG (Singleton + Scoped + Auto Injection) ---
+    configure_debug(injector)
+    
+    print("\n1. Проверка Singleton (Logger):")
+    log1 = injector.get_instance(ILogger)
+    log2 = injector.get_instance(ILogger)
+    print(f"Log1 ID: {log1.id}, Log2 ID: {log2.id}")
+    assert log1 is log2, "Singleton должен возвращать один и тот же объект"
+    print("SUCCESS: Logger is Singleton")
 
-print("\nPerRequest test:")
-with injector.open_scope():
-    pr1 = injector.get_instance(interface3)
-    pr2 = injector.get_instance(interface3)
-    print(f"pr1 is pr2: {pr1 is pr2}")
+    print("\n2. Проверка Scoped (Database):")
+    # Попытка получить Scoped без scope должна вызвать ошибку (или вернуть, если логика позволяет, но у тебя проверка if not self.scopes)
+    try:
+        injector.get_instance(IDatabase)
+    except Exception as e:
+        print(f"Ожидаемая ошибка без scope: {e}")
 
-# class func(ABC):
-#     @abstractmethod
-#     def aaaa(self) -> None:
-#         pass
-#
-#     def mes(self) -> str:
-#         pass
-#
-# class func_2(func):
-#     def aaaa(self) -> None:
-#         pass
-#
-#     def mes(self) -> str:
-#         pass
-#
-# def fabric_method(mes: str) -> func:
-#     return func_2(mes = mes)
-#
-# injector = Injector()
-# injector.register(func, fabric_method, LifeStyle.Singleton, parameters = {"mes": ":("})
+    with injector.open_scope():
+        db1 = injector.get_instance(IDatabase)
+        db2 = injector.get_instance(IDatabase)
+        assert db1 is db2, "Внутри одного Scope объекты должны быть одинаковы"
+        print(f"Inside Scope 1: DBs are same object. Connection: {db1.connect()}")
+    
+    with injector.open_scope():
+        db3 = injector.get_instance(IDatabase)
+        assert db1 is not db3, "В разных Scope объекты должны быть разными"
+        print("Inside Scope 2: DB is a new object.")
+    print("SUCCESS: Scoped works correctly")
+
+    print("\n3. Проверка автоматического внедрения (UserService):")
+    # UserService требует ILogger и IDatabase. Инжектор сам их найдет.
+    # Так как IDatabase у нас Scoped, нам нужен активный scope для создания UserService
+    with injector.open_scope():
+        user_service = injector.get_instance(UserService)
+        user_service.register_user("Ivan")
+        # Проверяем, что внутри сервиса лежат правильные типы
+        assert isinstance(user_service.logger, ConsoleLogger)
+        assert isinstance(user_service.db, InMemoryDatabase)
+    print("SUCCESS: Dependencies injected automatically")
+
+    # --- СЦЕНАРИЙ 2: RELEASE (Factory + Params) ---
+    # Создаем новый инжектор для чистоты эксперимента
+    injector_rel = Injector()
+    configure_release(injector_rel)
+
+    print("\n4. Проверка параметров (FileLogger path):")
+    f_log = injector_rel.get_instance(ILogger)
+    assert f_log.path == "/var/log/app.log"
+    print(f"SUCCESS: Parameter injected. Path is {f_log.path}")
+
+    print("\n5. Проверка фабричного метода:")
+    # Фабрика возвращает EmailNotification
+    notify = injector_rel.get_instance(INotification)
+    notify.send("Hello World") 
+    assert isinstance(notify, EmailNotification)
+    print("SUCCESS: Factory method worked")
+
+if __name__ == "__main__":
+    run_tests()
